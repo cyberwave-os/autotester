@@ -135,4 +135,4 @@ Autotester currently supports:
 ## Credits
 
 - [Powered by BrowserUse](https://github.com/browser-use/browser-use)
-- This project evolved from an earlier internal prototype originally developed by Tailor Media Inc.
+- This project evolved from an earlier open-source project developed by Tailor Media Inc, relased under Apache 2.0 [Codebeaver](https://github.com/codebeaver-ai/codebeaver-ai)
