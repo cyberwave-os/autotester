@@ -1,0 +1,12 @@
+services:
+  test:
+    build:
+      context: ..
+      dockerfile: tests/Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-dummy_key}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-dummy_key}
+    command: pytest
