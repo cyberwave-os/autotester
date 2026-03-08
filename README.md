@@ -56,9 +56,9 @@ login-test: Success!
 
 ## GitHub Action
 
-Autotester can be used in a [GitHub Action](https://github.com/cyberwaveos/autotester-oss-action) to run E2E tests after you release a new version.
+Autotester can be used in a [GitHub Action](https://github.com/cyberwave-os/autotester-action) to run E2E tests after you release a new version.
 
-Check out the action's [README](https://github.com/cyberwaveos/autotester-oss-action/blob/main/README.md) for more information, but here's a quick example:
+Check out the action's [README](https://github.com/cyberwave-os/autotester-action/blob/main/README.md) for more information, but here's a quick example:
 
 ```yaml
 name: Run Autotester

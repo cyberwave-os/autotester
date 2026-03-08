@@ -29,8 +29,10 @@ plugins:
             section: Build
           - type: ci
             section: CI
+  - - "@semantic-release/exec"
+    - prepareCmd: >-
+        python -c "from pathlib import Path; import re; p = Path('pyproject.toml'); c = p.read_text(); n = re.sub(r'(?m)^version = \"[^\"]+\"', 'version = \"${nextRelease.version}\"', c, count=1); assert n != c, 'version field not found in pyproject.toml'; p.write_text(n)"
   - "@semantic-release/changelog"
-  - "semantic-release-pypi"
   - "@semantic-release/github"
   - - "@semantic-release/git"
     - assets:
