@@ -1,0 +1,110 @@
+name: Autotester E2E (Full)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e-staging:
+    name: E2E — staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Autotester E2E Tests
+        id: autotester
+        uses: cyberwave-os/autotester-action@v0.1.0
+        with:
+          action-type: "e2e"
+          verbose: "true"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AUTOTESTER_BASE_URL: "https://staging.example.com"
+          AUTOTESTER_AUTH_USERNAME: ${{ secrets.AUTOTESTER_AUTH_USERNAME }}
+          AUTOTESTER_AUTH_PASSWORD: ${{ secrets.AUTOTESTER_AUTH_PASSWORD }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+
+      - name: Notify Slack (staging)
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          ENV_NAME="staging"
+          RESULTS=".autotester/e2e.json"
+          if [ ! -f "$RESULTS" ]; then
+            TEXT="⚠️ *Autotester E2E ($ENV_NAME)* — no results file found\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+          else
+            TOTAL=$(jq length "$RESULTS")
+            PASSED=$(jq '[.[] | select(.passed == true)] | length' "$RESULTS")
+
+            if [ "$PASSED" -eq "$TOTAL" ]; then
+              TEXT="✅ *Autotester E2E ($ENV_NAME)* — $PASSED/$TOTAL passed"
+            else
+              TEXT="❌ *Autotester E2E ($ENV_NAME)* — $PASSED/$TOTAL passed"
+            fi
+
+            DETAILS=$(jq -r '.[] |
+              if .passed then "✅ " + .name
+              else "❌ " + .name + "\n>  " + .comment
+                + (if .recording_url then "\n>  🎥 <" + .recording_url + "|Watch recording>" else "" end)
+              end' "$RESULTS")
+
+            TEXT="$TEXT\n\n$DETAILS"
+            TEXT="$TEXT\n\n<${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number }}|PR #${{ github.event.pull_request.number }}> · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Logs>"
+          fi
+
+          curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "$TEXT" '{text: $t}')"
+
+  e2e-production:
+    name: E2E — production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Autotester E2E Tests
+        id: autotester
+        uses: cyberwave-os/autotester-action@v0.1.0
+        with:
+          action-type: "e2e"
+          verbose: "true"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AUTOTESTER_BASE_URL: "https://www.example.com"
+          AUTOTESTER_AUTH_USERNAME: ${{ secrets.AUTOTESTER_AUTH_USERNAME }}
+          AUTOTESTER_AUTH_PASSWORD: ${{ secrets.AUTOTESTER_AUTH_PASSWORD }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+
+      - name: Notify Slack (production)
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          ENV_NAME="production"
+          RESULTS=".autotester/e2e.json"
+          if [ ! -f "$RESULTS" ]; then
+            TEXT="⚠️ *Autotester E2E ($ENV_NAME)* — no results file found\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+          else
+            TOTAL=$(jq length "$RESULTS")
+            PASSED=$(jq '[.[] | select(.passed == true)] | length' "$RESULTS")
+
+            if [ "$PASSED" -eq "$TOTAL" ]; then
+              TEXT="✅ *Autotester E2E ($ENV_NAME)* — $PASSED/$TOTAL passed"
+            else
+              TEXT="❌ *Autotester E2E ($ENV_NAME)* — $PASSED/$TOTAL passed"
+            fi
+
+            DETAILS=$(jq -r '.[] |
+              if .passed then "✅ " + .name
+              else "❌ " + .name + "\n>  " + .comment
+                + (if .recording_url then "\n>  🎥 <" + .recording_url + "|Watch recording>" else "" end)
+              end' "$RESULTS")
+
+            TEXT="$TEXT\n\n$DETAILS"
+            TEXT="$TEXT\n\n<${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number }}|PR #${{ github.event.pull_request.number }}> · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Logs>"
+          fi
+
+          curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "$TEXT" '{text: $t}')"

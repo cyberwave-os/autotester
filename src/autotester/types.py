@@ -15,6 +15,7 @@ class End2endTest(BaseModel):
     errored: bool = False
     comment: str = ""
     name: str
+    recording_url: str | None = None
 
     def __init__(self, name: str, steps: list[str], url: str):
         super().__init__(name=name, steps=steps, url=url)

@@ -1,0 +1,17 @@
+e2e:
+  posthog:
+    project_id: "12345"
+    host: "https://us.posthog.com" # use https://eu.posthog.com for EU Cloud
+
+  login-test:
+    url: "localhost:3000"
+    steps:
+      - Login with Github
+      - Check that the dashboard loads
+
+  checkout-test:
+    url: "localhost:3000/checkout"
+    steps:
+      - Add an item to the cart
+      - Go to checkout
+      - Check the total is displayed

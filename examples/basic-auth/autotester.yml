@@ -1,0 +1,18 @@
+e2e:
+  # Credentials can also be provided (or overridden) via environment variables:
+  #   AUTOTESTER_AUTH_USERNAME / AUTOTESTER_AUTH_PASSWORD
+  auth:
+    type: basic
+    username: "dev"
+    password: "dev123"
+
+  homepage-test:
+    url: "https://staging.example.com"
+    steps:
+      - Check the homepage loads
+      - Check the navigation bar is visible
+
+  dashboard-test:
+    url: "https://staging.example.com/dashboard"
+    steps:
+      - Check that the dashboard shows recent activity

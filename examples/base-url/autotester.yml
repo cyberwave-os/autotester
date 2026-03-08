@@ -1,0 +1,26 @@
+# Use relative URLs so the same config works across environments.
+# Set AUTOTESTER_BASE_URL to switch between staging / production / local,
+# or hardcode a default base_url here that the env var can override.
+e2e:
+  base_url: "https://staging.example.com"
+
+  login-test:
+    url: "/login"
+    steps:
+      - Enter username "demo" and password "demo"
+      - Click the "Sign in" button
+      - Check that the dashboard loads
+
+  settings-test:
+    url: "/settings/profile"
+    steps:
+      - Check the profile form is visible
+      - Change the display name to "Autotester"
+      - Click "Save"
+      - Check that a success message appears
+
+  # Absolute URLs are never modified by base_url
+  external-health:
+    url: "https://status.example.com/api/health"
+    steps:
+      - Check that the page shows "OK"

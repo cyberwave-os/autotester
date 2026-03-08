@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 from .types import End2endTest, TestCase
 from .Report import Report
+from .posthog import PosthogConfig, extract_session_id, get_recording_url
 
 load_dotenv()
 
@@ -30,12 +31,16 @@ class E2E:
         tests: dict,
         chrome_instance_path: str = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         auth: dict | None = None,
+        posthog_config: PosthogConfig | None = None,
+        base_url: str | None = None,
     ):
         self.tests = tests
         self.chrome_instance_path = chrome_instance_path
         if os.getenv("CHROME_INSTANCE_PATH"):
             self.chrome_instance_path = os.getenv("CHROME_INSTANCE_PATH")
         self.auth = self._resolve_auth(auth)
+        self.posthog_config = posthog_config
+        self.base_url = self._resolve_base_url(base_url)
 
     @staticmethod
     def _resolve_auth(auth: dict | None) -> dict | None:
@@ -57,6 +62,27 @@ class E2E:
         return None
 
     @staticmethod
+    def _resolve_base_url(base_url: str | None) -> str | None:
+        """Resolve the base URL, with AUTOTESTER_BASE_URL env var taking precedence."""
+        env_base = os.getenv("AUTOTESTER_BASE_URL")
+        return env_base if env_base else base_url
+
+    @staticmethod
+    def _resolve_url(test_url: str, base_url: str | None) -> str:
+        """Combine a test URL with a base URL when the test URL is relative.
+
+        A URL is considered absolute if it contains a scheme (e.g. ``http://``
+        or ``https://``).  Everything else is treated as a relative path and
+        joined onto *base_url*.  When *base_url* is ``None`` the test URL is
+        returned unchanged.
+        """
+        if base_url is None or "://" in test_url:
+            return test_url
+        base = base_url.rstrip("/")
+        path = test_url if test_url.startswith("/") else f"/{test_url}"
+        return f"{base}{path}"
+
+    @staticmethod
     def _apply_basic_auth_to_url(url: str, username: str, password: str) -> str:
         """Embed HTTP Basic Auth credentials into a URL for browser-level auth."""
         parsed = urlparse(url if "://" in url else f"http://{url}")
@@ -69,15 +95,17 @@ class E2E:
         GitUtils.ensure_autotester_folder_exists_and_in_gitignore()
         for test_name, test in self.tests.items():
             logger.debug(f"Running E2E: {test_name}")
+            resolved_url = self._resolve_url(test["url"], self.base_url)
             test = End2endTest(
                 name=test_name,
                 steps=test["steps"],
-                url=test["url"],
+                url=resolved_url,
             )
-            test_result = await self.run_test(test)
+            test_result, recording_url = await self.run_test(test)
             test.passed = not test_result.failure
             test.errored = test_result.errored
             test.comment = test_result.comment
+            test.recording_url = recording_url
             all_tests.append(test)
         # write the results to e2e.json. this is temporary, we will eventually use the report class
         with open(Path.cwd() / ".autotester/e2e.json", "w") as f:
@@ -93,7 +121,7 @@ class E2E:
         print(f"{passed_count}/{len(all_tests)} E2E tests passed")
         return all_tests
 
-    async def run_test(self, test: End2endTest) -> TestCase:
+    async def run_test(self, test: End2endTest) -> tuple[TestCase, str | None]:
         GitUtils.ensure_autotester_folder_exists_and_in_gitignore()  # avoid committing logs, screenshots and so on
 
         nav_url = test.url
@@ -134,21 +162,30 @@ class E2E:
 
         agent = Agent(**agent_kwargs)
         history = await agent.run()
+
+        session_id = None
+        if self.posthog_config:
+            session_id = await extract_session_id(browser)
+
         if hasattr(browser, "stop"):
             await browser.stop()
         elif hasattr(browser, "close"):
             await browser.close()
-        result = history.final_result()
-        if result:
+
+        if result := history.final_result():
             result_data = json.loads(result)
             if "failure" not in result_data and "passed" in result_data:
-                # Accept legacy/alternative output schema that uses "passed"
                 result_data["failure"] = not bool(result_data["passed"])
             test_result: TestCase = TestCase.model_validate(result_data)
-            return test_result
         else:
-            return TestCase(
+            test_result = TestCase(
                 failure=True,
                 comment="No result from the test",
                 errored=True,
             )
+
+        recording_url = None
+        if self.posthog_config and session_id and test_result.failure:
+            recording_url = await get_recording_url(self.posthog_config, session_id)
+
+        return test_result, recording_url

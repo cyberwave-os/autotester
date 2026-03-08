@@ -27,6 +27,7 @@ def test_end2end_test_defaults():
     assert test_instance.passed is False
     assert test_instance.errored is False
     assert test_instance.comment == ""
+    assert test_instance.recording_url is None
 
 
 def test_end2end_test_missing_field():
@@ -89,6 +90,7 @@ def test_end2end_test_dict_method():
         "passed": True,
         "errored": True,
         "comment": "Test complete",
+        "recording_url": None,
     }
     assert result == expected
 
@@ -142,6 +144,7 @@ def test_end2end_test_json_method():
         "passed": True,
         "errored": True,
         "comment": "JSON test complete",
+        "recording_url": None,
     }
     assert result == expected
 

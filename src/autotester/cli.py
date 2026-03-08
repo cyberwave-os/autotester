@@ -16,6 +16,7 @@ from autotester.reporting import Report
 from . import __version__
 import yaml
 from .E2E import E2E
+from .posthog import resolve_posthog_config
 import asyncio
 
 
@@ -165,10 +166,16 @@ def run_e2e_command(args):
                 )
                 sys.exit(1)
 
+            posthog_yaml = e2e_section.pop("posthog", None)
+            posthog_config = resolve_posthog_config(posthog_yaml)
+            base_url = e2e_section.pop("base_url", None)
+
             e2e = E2E(
                 e2e_section,
                 chrome_instance_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
                 auth=auth,
+                posthog_config=posthog_config,
+                base_url=base_url,
             )
             e2e_tests = asyncio.run(e2e.run())
             report = Report(e2e_tests)

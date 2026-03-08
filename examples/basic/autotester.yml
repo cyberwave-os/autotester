@@ -1,0 +1,15 @@
+e2e:
+  login-test:
+    url: "localhost:3000"
+    steps:
+      - Login with Github
+      - Go to the team page
+      - Change the team name to "e2e"
+      - Click on the "Save" button
+      - Check that the team name is "e2e"
+
+  homepage-test:
+    url: "localhost:3000"
+    steps:
+      - Check the homepage loads
+      - Check the navigation bar is visible

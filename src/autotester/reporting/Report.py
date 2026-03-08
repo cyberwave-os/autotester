@@ -25,5 +25,7 @@ class Report:
       else:
         logger.info(f"{test.name}: Failed!")
         logger.info(f"  Comment: {test.comment}")
+        if test.recording_url:
+          logger.info(f"  Recording: {test.recording_url}")
       logger.info("\n")
 

@@ -1,0 +1,49 @@
+name: Autotester E2E
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Autotester E2E Tests
+        id: autotester
+        uses: cyberwave-os/autotester-action@v0.1.0
+        with:
+          action-type: "e2e"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          RESULTS=".autotester/e2e.json"
+          if [ ! -f "$RESULTS" ]; then
+            TEXT="⚠️ *Autotester E2E* — no results file found\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+          else
+            TOTAL=$(jq length "$RESULTS")
+            PASSED=$(jq '[.[] | select(.passed == true)] | length' "$RESULTS")
+
+            if [ "$PASSED" -eq "$TOTAL" ]; then
+              TEXT="✅ *Autotester E2E* — $PASSED/$TOTAL passed"
+            else
+              TEXT="❌ *Autotester E2E* — $PASSED/$TOTAL passed"
+            fi
+
+            DETAILS=$(jq -r '.[] |
+              if .passed then "✅ " + .name
+              else "❌ " + .name + "\n>  " + .comment
+              end' "$RESULTS")
+
+            TEXT="$TEXT\n\n$DETAILS"
+            TEXT="$TEXT\n\n<${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.pull_request.number }}|PR #${{ github.event.pull_request.number }}> · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Logs>"
+          fi
+
+          curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "$TEXT" '{text: $t}')"

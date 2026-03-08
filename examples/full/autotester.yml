@@ -1,0 +1,42 @@
+# Full-featured example combining base URL, basic auth, and Posthog replay.
+#
+# Environment variables (all optional, override YAML values):
+#   AUTOTESTER_BASE_URL          - override base_url below
+#   AUTOTESTER_AUTH_USERNAME      - override auth.username below
+#   AUTOTESTER_AUTH_PASSWORD      - override auth.password below
+#   POSTHOG_PERSONAL_API_KEY      - required for Posthog replay links
+e2e:
+  base_url: "https://staging.example.com"
+
+  auth:
+    type: basic
+    username: "dev"
+    password: "dev123"
+
+  posthog:
+    project_id: "12345"
+    host: "https://us.posthog.com"
+
+  login-test:
+    url: "/login"
+    steps:
+      - Enter username "demo" and password "demo"
+      - Click the "Sign in" button
+      - Check that the dashboard loads
+
+  settings-test:
+    url: "/settings/profile"
+    steps:
+      - Check the profile form is visible
+      - Change the display name to "Autotester"
+      - Click "Save"
+      - Check that a success message appears
+
+  checkout-test:
+    url: "/checkout"
+    steps:
+      - Add an item to the cart
+      - Go to checkout
+      - Check the total is displayed
+      - Click "Place order"
+      - Check that the confirmation page shows an order number

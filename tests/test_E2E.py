@@ -48,34 +48,36 @@ class TestE2E:
         """Test run_test method for a successful test case."""
         e2e = E2E(tests={})
         test = End2endTest(name="TestSuccess", steps=["step1"], url="http://example.com")
-        result = await e2e.run_test(test)
+        result, recording_url = await e2e.run_test(test)
         assert result.passed is True
         assert result.comment == "Test succeeded"
         assert result.errored is False
+        assert recording_url is None
 
     async def test_run_test_failure(self):
         """Test run_test method for a test case simulating failure."""
         e2e = E2E(tests={})
         test = End2endTest(name="TestFailure", steps=["simulate_failure"], url="http://example.com")
-        result = await e2e.run_test(test)
+        result, recording_url = await e2e.run_test(test)
         assert result.passed is False
         assert result.comment == "Failed test simulated"
         assert result.errored is False
+        assert recording_url is None
 
     async def test_run_test_no_result(self):
         """Test run_test method when no result is returned from agent.run."""
         e2e = E2E(tests={})
         test = End2endTest(name="TestNoResult", steps=["simulate_no_result"], url="http://example.com")
-        result = await e2e.run_test(test)
+        result, recording_url = await e2e.run_test(test)
         assert result.errored is True
         assert result.comment == "No result from the test"
+        assert recording_url is None
     async def test_run_test_empty_string(self, monkeypatch):
         """Test run_test method when agent returns an empty string result."""
         e2e = E2E(tests={})
         test = End2endTest(name="TestEmptyString", steps=["simulate_empty_string"], url="http://example.com")
-        # Monkey-patch FakeHistory.final_result to return an empty string
         monkeypatch.setattr(FakeHistory, "final_result", lambda self: "")
-        result = await e2e.run_test(test)
+        result, _ = await e2e.run_test(test)
         assert result.errored is True
         assert result.comment == "No result from the test"
 
@@ -141,7 +143,7 @@ class TestE2E:
         """Test run_test with an empty steps list to ensure default success behavior."""
         e2e = E2E(tests={})
         test_obj = End2endTest(name="TestEmptySteps", steps=[], url="http://example.com")
-        result = await e2e.run_test(test_obj)
+        result, _ = await e2e.run_test(test_obj)
         assert result.passed is True
         assert result.comment == "Test succeeded"
         assert result.errored is False
@@ -211,7 +213,7 @@ class TestE2E:
         e2e = E2E(tests={})
         test_obj = End2endTest(name="TestExtraKeys", steps=["simulate_extra_keys"], url="http://example.com")
         monkeypatch.setattr(FakeHistory, "final_result", lambda self: json.dumps({"passed": False, "comment": "Handled extra keys", "extra": "ignored"}))
-        result = await e2e.run_test(test_obj)
+        result, _ = await e2e.run_test(test_obj)
         assert result.passed is False
         assert result.comment == "Handled extra keys"
         assert result.errored is False
@@ -385,12 +387,12 @@ class TestE2E:
         """Test that run_test handles a slow Agent.run execution correctly."""
         import asyncio
         async def slow_run(self):
-            await asyncio.sleep(0.1)  # simulate a delay in agent execution
+            await asyncio.sleep(0.1)
             return FakeHistory("normal step")
         monkeypatch.setattr(FakeAgent, "run", slow_run)
         e2e = E2E(tests={})
         test_obj = End2endTest(name="TestSlowAgent", steps=["normal step"], url="http://example.com")
-        result = await e2e.run_test(test_obj)
+        result, _ = await e2e.run_test(test_obj)
         assert result.passed is True
         assert result.comment == "Test succeeded"
         assert result.errored is False
@@ -404,6 +406,81 @@ class TestE2E:
             await e2e.run_test(test_obj)
 
 
+@pytest.mark.asyncio
+class TestE2EBaseUrl:
+    """Tests for base URL resolution in the E2E class."""
+
+    async def test_resolve_url_absolute_url_unchanged(self):
+        """Absolute test URLs are used as-is regardless of base_url."""
+        assert E2E._resolve_url("https://example.com/page", "https://base.com") == "https://example.com/page"
+        assert E2E._resolve_url("http://localhost:3000", "https://base.com") == "http://localhost:3000"
+
+    async def test_resolve_url_relative_combined_with_base(self):
+        """Relative test URLs are combined with the base URL."""
+        assert E2E._resolve_url("/login", "https://staging.example.com") == "https://staging.example.com/login"
+        assert E2E._resolve_url("login", "https://staging.example.com") == "https://staging.example.com/login"
+
+    async def test_resolve_url_base_trailing_slash(self):
+        """Trailing slash on base_url is handled correctly."""
+        assert E2E._resolve_url("/login", "https://staging.example.com/") == "https://staging.example.com/login"
+        assert E2E._resolve_url("login", "https://staging.example.com/") == "https://staging.example.com/login"
+
+    async def test_resolve_url_no_base_url(self):
+        """Without a base URL, test URLs are returned unchanged."""
+        assert E2E._resolve_url("/login", None) == "/login"
+        assert E2E._resolve_url("http://example.com", None) == "http://example.com"
+
+    async def test_base_url_env_var_takes_precedence(self, monkeypatch):
+        """AUTOTESTER_BASE_URL env var overrides the YAML base_url."""
+        monkeypatch.setenv("AUTOTESTER_BASE_URL", "https://env.example.com")
+        e2e = E2E(tests={}, base_url="https://yaml.example.com")
+        assert e2e.base_url == "https://env.example.com"
+
+    async def test_base_url_from_yaml_when_no_env(self, monkeypatch):
+        """YAML base_url is used when AUTOTESTER_BASE_URL is not set."""
+        monkeypatch.delenv("AUTOTESTER_BASE_URL", raising=False)
+        e2e = E2E(tests={}, base_url="https://yaml.example.com")
+        assert e2e.base_url == "https://yaml.example.com"
+
+    async def test_base_url_none_when_neither_set(self, monkeypatch):
+        """base_url is None when neither env var nor YAML provides one."""
+        monkeypatch.delenv("AUTOTESTER_BASE_URL", raising=False)
+        e2e = E2E(tests={})
+        assert e2e.base_url is None
+
+    async def test_run_resolves_relative_urls(self, monkeypatch, tmp_path):
+        """The run() method resolves relative test URLs against the base URL."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("AUTOTESTER_BASE_URL", raising=False)
+        tests_dict = {
+            "RelativeTest": {"steps": ["step1"], "url": "/dashboard"},
+            "AbsoluteTest": {"steps": ["step1"], "url": "https://other.com/page"},
+        }
+        e2e = E2E(tests=tests_dict, base_url="https://staging.example.com")
+        results = await e2e.run()
+        for test in results:
+            if test.name == "RelativeTest":
+                assert test.url == "https://staging.example.com/dashboard"
+            elif test.name == "AbsoluteTest":
+                assert test.url == "https://other.com/page"
+
+    async def test_run_test_uses_resolved_url_in_agent_task(self, monkeypatch):
+        """The agent task string uses the already-resolved URL from End2endTest."""
+        captured_tasks = []
+        original_init = FakeAgent.__init__
+        def new_init(self, task, llm, browser, controller):
+            captured_tasks.append(task)
+            self.llm = llm
+            self.browser = browser
+            self.controller = controller
+        monkeypatch.setattr(FakeAgent, "__init__", new_init)
+        e2e = E2E(tests={}, base_url="https://staging.example.com")
+        test_obj = End2endTest(name="ResolvedURL", steps=["click"], url="https://staging.example.com/dashboard")
+        await e2e.run_test(test_obj)
+        assert "https://staging.example.com/dashboard" in captured_tasks[0]
+        monkeypatch.setattr(FakeAgent, "__init__", original_init)
+
+
 def test_end2endtest_invalid_step_type():
     """Test that End2endTest raises a validation error when steps contain non-string values."""
     with pytest.raises(Exception) as excinfo:
@@ -415,5 +492,193 @@ def test_end2endtest_model_dump_output():
     """Test that End2endTest.model_dump returns all expected keys."""
     test_obj = End2endTest(name="DumpTest", steps=["step1", "step2"], url="http://example.com")
     dump = test_obj.model_dump()
-    expected_keys = {"steps", "url", "passed", "errored", "comment", "name"}
+    expected_keys = {"steps", "url", "passed", "errored", "comment", "name", "recording_url"}
     assert set(dump.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# Posthog integration tests within E2E
+# ---------------------------------------------------------------------------
+
+from autotester.posthog import PosthogConfig
+
+
+class FakePageForE2E:
+    def __init__(self, session_id=None):
+        self._session_id = session_id
+
+    async def evaluate(self, script):
+        return self._session_id
+
+
+class FakeBrowserWithPosthog:
+    """FakeBrowser that supports get_current_page for posthog session extraction."""
+
+    def __init__(self, config=None, session_id=None):
+        self.config = config
+        self.closed = False
+        self._page = FakePageForE2E(session_id)
+
+    async def close(self):
+        self.closed = True
+
+    async def get_current_page(self):
+        return self._page
+
+
+class FakeAiohttpResponseForE2E:
+    def __init__(self, status, data):
+        self.status = status
+        self._data = data
+
+    async def json(self):
+        return self._data
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+
+class FakeAiohttpSessionForE2E:
+    def __init__(self, response):
+        self._response = response
+
+    def patch(self, url, json=None, headers=None):
+        return self._response
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+
+@pytest.mark.asyncio
+class TestE2EWithPosthog:
+    """Tests for E2E with Posthog session replay integration."""
+
+    @pytest.fixture(autouse=True)
+    def patch_browser_posthog(self, monkeypatch):
+        monkeypatch.setattr("autotester.E2E.Agent", FakeAgent)
+
+    async def test_no_posthog_config_returns_none_url(self, monkeypatch):
+        """Without posthog config, recording_url is always None."""
+        monkeypatch.setattr(
+            "autotester.E2E.Browser",
+            lambda **kw: FakeBrowserWithPosthog(session_id="sess_1"),
+        )
+        e2e = E2E(tests={}, posthog_config=None)
+        test_obj = End2endTest(name="NoPH", steps=["step1"], url="http://example.com")
+        result, recording_url = await e2e.run_test(test_obj)
+        assert recording_url is None
+
+    async def test_posthog_not_called_on_success(self, monkeypatch):
+        """Recording URL is only generated for failed tests."""
+        monkeypatch.setattr(
+            "autotester.E2E.Browser",
+            lambda **kw: FakeBrowserWithPosthog(session_id="sess_success"),
+        )
+        config = PosthogConfig(project_id="1", personal_api_key="phx_k")
+        e2e = E2E(tests={}, posthog_config=config)
+        test_obj = End2endTest(name="PassTest", steps=["step1"], url="http://example.com")
+        result, recording_url = await e2e.run_test(test_obj)
+        assert result.passed is True
+        assert recording_url is None
+
+    async def test_posthog_recording_url_on_failure(self, monkeypatch):
+        """When a test fails and posthog is configured, a recording URL is generated."""
+        monkeypatch.setattr(
+            "autotester.E2E.Browser",
+            lambda **kw: FakeBrowserWithPosthog(session_id="sess_fail"),
+        )
+        fake_resp = FakeAiohttpResponseForE2E(200, {"access_token": "tok_fail"})
+        fake_session = FakeAiohttpSessionForE2E(fake_resp)
+        monkeypatch.setattr(
+            "autotester.posthog.aiohttp.ClientSession",
+            lambda: fake_session,
+        )
+        config = PosthogConfig(
+            project_id="42",
+            host="https://us.posthog.com",
+            personal_api_key="phx_key",
+        )
+        e2e = E2E(tests={}, posthog_config=config)
+        test_obj = End2endTest(
+            name="FailTest", steps=["simulate_failure"], url="http://example.com"
+        )
+        result, recording_url = await e2e.run_test(test_obj)
+        assert result.passed is False
+        assert recording_url == "https://us.posthog.com/shared/tok_fail"
+
+    async def test_posthog_no_session_id_on_page(self, monkeypatch):
+        """When posthog SDK is not on the page, recording_url is None even on failure."""
+        monkeypatch.setattr(
+            "autotester.E2E.Browser",
+            lambda **kw: FakeBrowserWithPosthog(session_id=None),
+        )
+        config = PosthogConfig(project_id="1", personal_api_key="phx_k")
+        e2e = E2E(tests={}, posthog_config=config)
+        test_obj = End2endTest(
+            name="NoSDK", steps=["simulate_failure"], url="http://example.com"
+        )
+        result, recording_url = await e2e.run_test(test_obj)
+        assert result.passed is False
+        assert recording_url is None
+
+    async def test_posthog_api_failure_returns_none(self, monkeypatch):
+        """When the Posthog API returns an error, recording_url is None."""
+        monkeypatch.setattr(
+            "autotester.E2E.Browser",
+            lambda **kw: FakeBrowserWithPosthog(session_id="sess_api_fail"),
+        )
+        fake_resp = FakeAiohttpResponseForE2E(500, {})
+        fake_session = FakeAiohttpSessionForE2E(fake_resp)
+        monkeypatch.setattr(
+            "autotester.posthog.aiohttp.ClientSession",
+            lambda: fake_session,
+        )
+        config = PosthogConfig(project_id="1", personal_api_key="phx_k")
+        e2e = E2E(tests={}, posthog_config=config)
+        test_obj = End2endTest(
+            name="APIFail", steps=["simulate_failure"], url="http://example.com"
+        )
+        result, recording_url = await e2e.run_test(test_obj)
+        assert result.passed is False
+        assert recording_url is None
+
+    async def test_run_attaches_recording_url_to_test(self, monkeypatch, tmp_path):
+        """The run() method attaches recording_url to the End2endTest result."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "autotester.E2E.Browser",
+            lambda **kw: FakeBrowserWithPosthog(session_id="sess_run"),
+        )
+        fake_resp = FakeAiohttpResponseForE2E(200, {"access_token": "tok_run"})
+        fake_session = FakeAiohttpSessionForE2E(fake_resp)
+        monkeypatch.setattr(
+            "autotester.posthog.aiohttp.ClientSession",
+            lambda: fake_session,
+        )
+        config = PosthogConfig(
+            project_id="10",
+            host="https://us.posthog.com",
+            personal_api_key="phx_key",
+        )
+        tests_dict = {
+            "PassingTest": {"steps": ["step1"], "url": "http://example.com"},
+            "FailingTest": {"steps": ["simulate_failure"], "url": "http://example.com"},
+        }
+        e2e = E2E(tests=tests_dict, posthog_config=config)
+        results = await e2e.run()
+        for test in results:
+            if test.name == "PassingTest":
+                assert test.recording_url is None
+            elif test.name == "FailingTest":
+                assert test.recording_url == "https://us.posthog.com/shared/tok_run"
+
+        with open(tmp_path / "e2e.json", "r") as f:
+            data = json.load(f)
+        failing = [d for d in data if d["name"] == "FailingTest"][0]
+        assert failing["recording_url"] == "https://us.posthog.com/shared/tok_run"
