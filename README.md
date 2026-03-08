@@ -37,6 +37,27 @@ e2e:
       - Check that the team name is "e2e" # use words like "Check that" to assert the results of the test
 ```
 
+If your environment is protected by **HTTP Basic Auth**, add an `auth` block:
+
+```yaml
+e2e:
+  auth:
+    type: basic
+    username: "dev"
+    password: "dev123"
+  login-test:
+    url: "https://staging.example.com"
+    steps:
+      - Check the homepage loads
+```
+
+You can also provide auth credentials via environment variables (these take precedence over YAML):
+
+```bash
+export AUTOTESTER_AUTH_USERNAME="dev"
+export AUTOTESTER_AUTH_PASSWORD="dev123"
+```
+
 That's it. To run it, you need to have an OpenAI API key and Chrome installed.
 
 ```bash
@@ -77,6 +98,9 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STARTING_URL: "http://yourstaging.yourwebsite.com"
+          # Optional: for Basic Auth protected environments
+          # AUTOTESTER_AUTH_USERNAME: ${{ secrets.AUTOTESTER_AUTH_USERNAME }}
+          # AUTOTESTER_AUTH_PASSWORD: ${{ secrets.AUTOTESTER_AUTH_PASSWORD }}
 ```
 
 ## CLI Reference
@@ -106,6 +130,8 @@ autotester e2e [--config <config_file>] [--verbose]
 
 - `OPENAI_API_KEY`: (Required) Your OpenAI API key
 - `CHROME_INSTANCE_PATH`: Path to your Chrome instance. Defaults to `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- `AUTOTESTER_AUTH_USERNAME`: Username for HTTP Basic Auth (overrides `auth.username` in YAML)
+- `AUTOTESTER_AUTH_PASSWORD`: Password for HTTP Basic Auth (overrides `auth.password` in YAML)
 
 ## Run Tests with Docker
 
@@ -127,7 +153,7 @@ docker compose -f tests/docker-compose.yml run --rm test
 
 ### Roadmap
 
-- [ ] Add support for simple auth, since test environment often have auth.
+- [x] Add support for simple auth, since test environment often have auth.
 - [ ] Add support for screen recording with Posthog, so that QA engineers can easily review failed tests.
 
 ## Credits

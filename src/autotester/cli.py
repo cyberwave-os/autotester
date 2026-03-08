@@ -145,7 +145,7 @@ Examples:
 
 
 def run_e2e_command(args):
-    """Run the e2e test command (mocked for now)."""
+    """Run the e2e test command."""
     logger = logging.getLogger("autotester")
     logger.debug(f"E2E testing with YAML file: {args.yaml_file}")
 
@@ -156,9 +156,19 @@ def run_e2e_command(args):
             if "e2e" not in yaml_content:
                 logger.error("Error: No e2e tests found in the YAML file")
                 sys.exit(1)
+
+            e2e_section = dict(yaml_content["e2e"])
+            auth = e2e_section.pop("auth", None)
+            if auth and auth.get("type") and auth["type"] != "basic":
+                logger.error(
+                    f"Unsupported auth type '{auth['type']}'. Only 'basic' is currently supported."
+                )
+                sys.exit(1)
+
             e2e = E2E(
-                yaml_content["e2e"],
+                e2e_section,
                 chrome_instance_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                auth=auth,
             )
             e2e_tests = asyncio.run(e2e.run())
             report = Report(e2e_tests)
