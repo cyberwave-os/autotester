@@ -20,6 +20,16 @@ from .posthog import resolve_posthog_config
 import asyncio
 
 
+DEFAULT_CONFIG = "autotester.yml"
+
+
+def resolve_config_file(cli_value: str | None) -> str:
+    """Return the config path: CLI flag > AUTOTESTER_CONFIG env var > default."""
+    if cli_value:
+        return cli_value
+    return os.getenv("AUTOTESTER_CONFIG", DEFAULT_CONFIG)
+
+
 def valid_file_path(path):
     """Validate if the given path exists and is a file."""
     file_path = pathlib.Path(path)
@@ -71,6 +81,12 @@ Examples:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose logging output"
     )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to the YAML configuration file (defaults to autotester.yml, or AUTOTESTER_CONFIG env var)",
+        dest="yaml_file",
+    )
 
     # Create subparsers for different commands
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -93,9 +109,9 @@ Examples:
     )
     e2e_parser.add_argument(
         "--config",
-        default="autotester.yml",
-        help="Path to the YAML configuration file (defaults to autotester.yml)",
-        dest="yaml_file",  # Keep the same variable name for compatibility
+        default=argparse.SUPPRESS,
+        help="Path to the YAML configuration file (defaults to autotester.yml, or AUTOTESTER_CONFIG env var)",
+        dest="yaml_file",
     )
     # Add verbose flag to e2e parser
     e2e_parser.add_argument(
@@ -112,29 +128,28 @@ Examples:
         logger.error("OPENAI_API_KEY environment variable is not set")
         sys.exit(1)
 
+    # Resolve config file once: CLI flag > env var > default
+    args.yaml_file = resolve_config_file(args.yaml_file)
+
     # If no command specified, run E2E tests if defined in config
     if not args.command:
         try:
-            with open("autotester.yml", "r") as f:
+            with open(args.yaml_file, "r") as f:
                 config = yaml.safe_load(f)
 
             if "e2e" in config:
                 logger.info("Running e2e tests...")
                 args.command = "e2e"
-                args.yaml_file = "autotester.yml"  # Set the yaml_file attribute
-
                 run_e2e_command(args)
             else:
-                logger.info("No E2E Tests configured in autotester.yml, skipping...")
-
-            if "e2e" not in config:
                 logger.error(
-                    "No tests configured in autotester.yml. Check out the documentation at https://github.com/autotester-ai/autotester-ai for more information."
+                    "No tests configured in %s. Check out the documentation at https://github.com/autotester-ai/autotester-ai for more information.",
+                    args.yaml_file,
                 )
                 sys.exit(1)
 
         except FileNotFoundError:
-            logger.error("Could not find autotester.yml")
+            logger.error("Could not find %s", args.yaml_file)
             sys.exit(1)
     else:
         # Handle specific commands as before

@@ -179,11 +179,15 @@ jobs:
       - uses: cyberwave-os/autotester-action@v0.1.0
         with:
           action-type: "e2e"
+          # Optional: use a custom config file (defaults to autotester.yml)
+          # config-file: "tests/e2e.yml"
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STARTING_URL: "http://yourstaging.yourwebsite.com"
           # Optional: override base URL for this environment
           # AUTOTESTER_BASE_URL: "https://staging.yourwebsite.com"
+          # Optional: config file via env var (alternative to config-file input)
+          # AUTOTESTER_CONFIG: "tests/e2e.yml"
           # Optional: for Basic Auth protected environments
           # AUTOTESTER_AUTH_USERNAME: ${{ secrets.AUTOTESTER_AUTH_USERNAME }}
           # AUTOTESTER_AUTH_PASSWORD: ${{ secrets.AUTOTESTER_AUTH_PASSWORD }}
@@ -222,13 +226,14 @@ The recording URL appears in the console output and is also available in `.autot
 
 ### Commands
 
-- `autotester`: Without any command, runs E2E tests if defined in autotester.yml
-- `autotester e2e`: Runs end-to-end tests defined in autotester.yml
+- `autotester`: Without any command, runs E2E tests if defined in the config file
+- `autotester e2e`: Runs end-to-end tests defined in the config file
 
 ### Command Options
 
 #### Global Options
 
+- `--config`: Path to the YAML configuration file. Resolution order: CLI flag > `AUTOTESTER_CONFIG` env var > `autotester.yml`
 - `-v, --verbose`: Enable verbose logging output
 - `--version`: Display Autotester version number
 
@@ -238,12 +243,17 @@ The recording URL appears in the console output and is also available in `.autot
 autotester e2e [--config <config_file>] [--verbose]
 ```
 
+```bash
+autotester --config my-tests.yml
+```
+
 - `--config`: (Optional) Path to the YAML configuration file (defaults to autotester.yml)
 - `-v, --verbose`: (Optional) Enable verbose logging output
 
 ### Environment Variables
 
 - `OPENAI_API_KEY`: (Required) Your OpenAI API key
+- `AUTOTESTER_CONFIG`: Path to the YAML configuration file (overridden by `--config` CLI flag, defaults to `autotester.yml`)
 - `CHROME_INSTANCE_PATH`: Path to your Chrome instance. Defaults to `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
 - `AUTOTESTER_BASE_URL`: Base URL to combine with relative test URLs (overrides `base_url` in YAML)
 - `AUTOTESTER_AUTH_USERNAME`: Username for HTTP Basic Auth (overrides `auth.username` in YAML)

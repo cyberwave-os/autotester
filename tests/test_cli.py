@@ -79,3 +79,71 @@ def test_default_mode_errors_when_no_e2e_config(tmp_path, monkeypatch, mock_env)
     with pytest.raises(SystemExit) as exc_info:
         cli.main([])
     assert exc_info.value.code == 1
+
+
+def test_global_config_flag_without_subcommand(tmp_path, monkeypatch, mock_env):
+    """autotester --config custom.yml (no subcommand) should use the custom file."""
+    custom = _write_config(
+        tmp_path / "custom.yml",
+        "e2e:\n  smoke:\n    url: 'http://example.com'\n    steps:\n      - Check homepage\n",
+    )
+
+    def fake_run_e2e_command(args):
+        assert args.yaml_file == str(custom)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "run_e2e_command", fake_run_e2e_command)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--config", str(custom)])
+    assert exc_info.value.code == 0
+
+
+def test_env_var_config(tmp_path, monkeypatch, mock_env):
+    """AUTOTESTER_CONFIG env var should be picked up when no --config flag is given."""
+    custom = _write_config(
+        tmp_path / "env.yml",
+        "e2e:\n  smoke:\n    url: 'http://example.com'\n    steps:\n      - Check homepage\n",
+    )
+    monkeypatch.setenv("AUTOTESTER_CONFIG", str(custom))
+
+    def fake_run_e2e_command(args):
+        assert args.yaml_file == str(custom)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "run_e2e_command", fake_run_e2e_command)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([])
+    assert exc_info.value.code == 0
+
+
+def test_cli_flag_overrides_env_var(tmp_path, monkeypatch, mock_env):
+    """--config flag should take precedence over AUTOTESTER_CONFIG env var."""
+    env_cfg = _write_config(tmp_path / "env.yml", "e2e:\n  a:\n    url: x\n    steps:\n      - s\n")
+    cli_cfg = _write_config(tmp_path / "cli.yml", "e2e:\n  b:\n    url: y\n    steps:\n      - s\n")
+    monkeypatch.setenv("AUTOTESTER_CONFIG", str(env_cfg))
+
+    def fake_run_e2e_command(args):
+        assert args.yaml_file == str(cli_cfg)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "run_e2e_command", fake_run_e2e_command)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--config", str(cli_cfg)])
+    assert exc_info.value.code == 0
+
+
+def test_e2e_subcommand_config_flag(tmp_path, monkeypatch, mock_env):
+    """autotester e2e --config custom.yml should work."""
+    custom = _write_config(
+        tmp_path / "custom.yml",
+        "e2e:\n  smoke:\n    url: 'http://example.com'\n    steps:\n      - Check homepage\n",
+    )
+
+    def fake_run_e2e_command(args):
+        assert args.yaml_file == str(custom)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "run_e2e_command", fake_run_e2e_command)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["e2e", "--config", str(custom)])
+    assert exc_info.value.code == 0
