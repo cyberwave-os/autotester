@@ -71,7 +71,7 @@ jobs:
   after-deployment:
     runs-on: ubuntu-latest
     steps:
-      - uses: cyberwaveos/autotester-oss-action@v0.1.0
+      - uses: cyberwave-os/autotester-action@v0.1.0
         with:
           action-type: "e2e"
         env:
@@ -125,12 +125,10 @@ make test-docker-build
 docker compose -f tests/docker-compose.yml run --rm test
 ```
 
-### Supported Languages and Frameworks
+### Roadmap
 
-Autotester currently supports:
-
-- Python
-- TypeScript
+- [ ] Add support for simple auth, since test environment often have auth.
+- [ ] Add support for screen recording with Posthog, so that QA engineers can easily review failed tests.
 
 ## Credits
 

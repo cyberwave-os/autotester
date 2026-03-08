@@ -330,18 +330,6 @@ class TestE2E:
         assert captured_config["config"].chrome_instance_path == custom_path
         monkeypatch.setattr(FakeBrowser, "__init__", original_init)
 
-    def test_end2endtest_invalid_step_type(self):
-        """Test that End2endTest raises a validation error when steps contain non-string values."""
-        with pytest.raises(Exception) as excinfo:
-            End2endTest(name="InvalidStep", steps=[123], url="http://example.com")
-        assert "str" in str(excinfo.value)
-
-    def test_end2endtest_model_dump_output(self):
-        """Test that End2endTest.model_dump returns all expected keys."""
-        test_obj = End2endTest(name="DumpTest", steps=["step1", "step2"], url="http://example.com")
-        dump = test_obj.model_dump()
-        expected_keys = {"steps", "url", "passed", "errored", "comment", "name"}
-        assert set(dump.keys()) == expected_keys
     async def test_logging_in_run(self, monkeypatch, caplog):
         """Test that the run() method logs debug messages for each test."""
         tests_dict = {"TestLog": {"steps": ["step1"], "url": "http://example.com"}}
@@ -414,3 +402,18 @@ class TestE2E:
         monkeypatch.setattr(FakeHistory, "final_result", lambda self: 123)
         with pytest.raises(Exception):
             await e2e.run_test(test_obj)
+
+
+def test_end2endtest_invalid_step_type():
+    """Test that End2endTest raises a validation error when steps contain non-string values."""
+    with pytest.raises(Exception) as excinfo:
+        End2endTest(name="InvalidStep", steps=[123], url="http://example.com")
+    assert "str" in str(excinfo.value)
+
+
+def test_end2endtest_model_dump_output():
+    """Test that End2endTest.model_dump returns all expected keys."""
+    test_obj = End2endTest(name="DumpTest", steps=["step1", "step2"], url="http://example.com")
+    dump = test_obj.model_dump()
+    expected_keys = {"steps", "url", "passed", "errored", "comment", "name"}
+    assert set(dump.keys()) == expected_keys

@@ -78,10 +78,10 @@ def test_end2end_test_dict_method():
     """Test that the dict() method of End2endTest returns a correct dictionary representation including default values."""
     instance = End2endTest(name="DictTest", steps=["s1"], url="http://example.com")
     # Manually update the optional fields to non‑default values.
-    instance = instance.copy(
+    instance = instance.model_copy(
         update={"passed": True, "errored": True, "comment": "Test complete"}
     )
-    result = instance.dict()
+    result = instance.model_dump()
     expected = {
         "name": "DictTest",
         "steps": ["s1"],
@@ -99,7 +99,7 @@ def test_test_case_extra_field():
     instance = TestCase(
         failure=False, comment="Extra field allowed", extra_field="ignored"
     )
-    result = instance.dict()
+    result = instance.model_dump()
     expected = {"failure": False, "comment": "Extra field allowed", "errored": False}
     assert result == expected
 
@@ -107,7 +107,7 @@ def test_test_case_extra_field():
 def test_test_case_to_dict():
     """Test that the dict() method of TestCase returns the correct dictionary representation."""
     instance = TestCase(failure=True, comment="All good", errored=True)
-    result = instance.dict()
+    result = instance.model_dump()
     expected = {"failure": True, "comment": "All good", "errored": True}
     assert result == expected
 
@@ -115,11 +115,11 @@ def test_test_case_to_dict():
 def test_test_case_update():
     """Test that updating a TestCase model using copy(update=...) works as expected."""
     instance = TestCase(failure=False, comment="Initial")
-    updated = instance.copy(
+    updated = instance.model_copy(
         update={"failure": True, "comment": "Updated", "errored": True}
     )
     expected = {"failure": True, "comment": "Updated", "errored": True}
-    assert updated.dict() == expected
+    assert updated.model_dump() == expected
 
 
 def test_end2end_test_json_method():
@@ -128,10 +128,10 @@ def test_end2end_test_json_method():
         name="JSONTest", steps=["step1", "step2"], url="http://example.com"
     )
     # Manually update optional fields to non-default values.
-    instance = instance.copy(
+    instance = instance.model_copy(
         update={"passed": True, "errored": True, "comment": "JSON test complete"}
     )
-    json_str = instance.json()
+    json_str = instance.model_dump_json()
     import json
 
     result = json.loads(json_str)
@@ -160,9 +160,9 @@ def test_test_case_parse_obj():
         "errored": False,
         "extra": "should be ignored",
     }
-    obj = TestCase.parse_obj(data)
+    obj = TestCase.model_validate(data)
     expected = {"failure": True, "comment": "Parsed successfully", "errored": False}
-    assert obj.dict() == expected
+    assert obj.model_dump() == expected
 
 
 def test_end2end_test_steps_must_all_be_strings():
