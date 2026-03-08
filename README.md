@@ -162,6 +162,13 @@ docker compose -f tests/docker-compose.yml run --rm test
 
 - [x] Add support for simple auth, since test environment often have auth.
 - [ ] Add support for screen recording with Posthog, so that QA engineers can easily review failed tests.
+  - **Prerequisite:** The website under test must have the [Posthog JS SDK](https://posthog.com/docs/libraries/js) installed with [session replay](https://posthog.com/docs/session-replay) enabled. This is an optional feature for users who already use Posthog.
+  - **Config:** Add an optional `posthog` block to `autotester.yml` with `project_id` and `host` (defaults to `https://us.posthog.com`). Requires `POSTHOG_PERSONAL_API_KEY` env var with `session_recording:read` and `sharing_configuration:write` scopes.
+  - **Implementation plan:**
+    1. After the browser-use agent finishes a test but before closing the browser, execute JS in the page to extract the session ID via `window.posthog.getSessionId()`.
+    2. If the test failed and a session ID was captured, call the Posthog sharing API (`PATCH /api/projects/{project_id}/session_recordings/{session_id}/sharing` with `{"enabled": true}`) to generate a shareable link.
+    3. Add a `recording_url` field to the `End2endTest` model and include it in console, JSON, and XML report outputs.
+    4. In the GitHub Action, surface the recording link in the test failure message / PR comment.
 
 ## Credits
 
