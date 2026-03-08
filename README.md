@@ -58,12 +58,19 @@ export AUTOTESTER_AUTH_USERNAME="dev"
 export AUTOTESTER_AUTH_PASSWORD="dev123"
 ```
 
-That's it. To run it, you need to have an OpenAI API key and Chrome installed.
+That's it. To run it, you need to have an OpenAI API key and Chrome/Chromium installed.
+
+If you don't already have Chrome installed, you can use the [browser-use](https://github.com/browser-use/browser-use) CLI to install Chromium:
+
+```bash
+browser-use install
+```
+
+Then export your OpenAI key and run:
 
 ```bash
 export OPENAI_API_KEY="your-openai-api-key"
 autotester
-
 ```
 
 You will get a summary report like the following:
