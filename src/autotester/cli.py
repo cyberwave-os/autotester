@@ -184,6 +184,8 @@ def run_e2e_command(args):
             posthog_yaml = e2e_section.pop("posthog", None)
             posthog_config = resolve_posthog_config(posthog_yaml)
             base_url = e2e_section.pop("base_url", None)
+            max_steps = e2e_section.pop("max_steps", None)
+            timeout = e2e_section.pop("timeout", None)
 
             e2e = E2E(
                 e2e_section,
@@ -191,6 +193,8 @@ def run_e2e_command(args):
                 auth=auth,
                 posthog_config=posthog_config,
                 base_url=base_url,
+                max_steps=max_steps,
+                timeout=timeout,
             )
             e2e_tests = asyncio.run(e2e.run())
             report = Report(e2e_tests)

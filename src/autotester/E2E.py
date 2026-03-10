@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 from types import SimpleNamespace
@@ -17,6 +18,11 @@ load_dotenv()
 
 logger = logging.getLogger("autotester")
 
+DEFAULT_MAX_STEPS_PER_TEST_STEP = 5
+DEFAULT_MIN_MAX_STEPS = 20
+DEFAULT_TIMEOUT_PER_TEST_STEP = 60  # seconds
+DEFAULT_MIN_TIMEOUT = 180  # seconds
+
 
 controller = Controller(output_model=TestCase)
 
@@ -33,6 +39,8 @@ class E2E:
         auth: dict | None = None,
         posthog_config: PosthogConfig | None = None,
         base_url: str | None = None,
+        max_steps: int | None = None,
+        timeout: int | None = None,
     ):
         self.tests = tests
         self.chrome_instance_path = chrome_instance_path
@@ -41,6 +49,8 @@ class E2E:
         self.auth = self._resolve_auth(auth)
         self.posthog_config = posthog_config
         self.base_url = self._resolve_base_url(base_url)
+        self.max_steps = max_steps
+        self.timeout = timeout
 
     @staticmethod
     def _resolve_auth(auth: dict | None) -> dict | None:
@@ -96,12 +106,16 @@ class E2E:
         for test_name, test in self.tests.items():
             logger.debug(f"Running E2E: {test_name}")
             resolved_url = self._resolve_url(test["url"], self.base_url)
+            test_max_steps = test.get("max_steps", self.max_steps)
+            test_timeout = test.get("timeout", self.timeout)
             test = End2endTest(
                 name=test_name,
                 steps=test["steps"],
                 url=resolved_url,
             )
-            test_result, recording_url = await self.run_test(test)
+            test_result, recording_url = await self.run_test(
+                test, max_steps=test_max_steps, timeout=test_timeout
+            )
             test.passed = not test_result.failure
             test.errored = test_result.errored
             test.comment = test_result.comment
@@ -121,8 +135,22 @@ class E2E:
         print(f"{passed_count}/{len(all_tests)} E2E tests passed")
         return all_tests
 
-    async def run_test(self, test: End2endTest) -> tuple[TestCase, str | None]:
+    async def run_test(
+        self,
+        test: End2endTest,
+        max_steps: int | None = None,
+        timeout: int | None = None,
+    ) -> tuple[TestCase, str | None]:
         GitUtils.ensure_autotester_folder_exists_and_in_gitignore()  # avoid committing logs, screenshots and so on
+
+        effective_max_steps = max_steps or max(
+            len(test.steps) * DEFAULT_MAX_STEPS_PER_TEST_STEP,
+            DEFAULT_MIN_MAX_STEPS,
+        )
+        effective_timeout = timeout or max(
+            len(test.steps) * DEFAULT_TIMEOUT_PER_TEST_STEP,
+            DEFAULT_MIN_TIMEOUT,
+        )
 
         nav_url = test.url
         if self.auth:
@@ -161,7 +189,18 @@ class E2E:
             )
 
         agent = Agent(**agent_kwargs)
-        history = await agent.run()
+
+        timed_out = False
+        try:
+            history = await asyncio.wait_for(
+                agent.run(max_steps=effective_max_steps),
+                timeout=effective_timeout,
+            )
+        except asyncio.TimeoutError:
+            timed_out = True
+            logger.warning(
+                "Test '%s' timed out after %ds", test.name, effective_timeout
+            )
 
         session_id = None
         if self.posthog_config:
@@ -172,7 +211,13 @@ class E2E:
         elif hasattr(browser, "close"):
             await browser.close()
 
-        if result := history.final_result():
+        if timed_out:
+            test_result = TestCase(
+                failure=True,
+                comment=f"Test timed out after {effective_timeout}s",
+                errored=True,
+            )
+        elif result := history.final_result():
             result_data = json.loads(result)
             if "failure" not in result_data and "passed" in result_data:
                 result_data["failure"] = not bool(result_data["passed"])

@@ -28,7 +28,7 @@ Add a config file to your project called `autotester.yml`. This tells Autotester
 ```yaml
 e2e:
   login-test: # Name of the test. You can add more
-    url: "localhost:3000" # Starting URL of your app. It can be a local server or a remote server
+    url: "yourwebsite.com" # Starting URL of your app. It can be a local server or a remote server
     steps:
       - Login with Github
       - Go to the team page
@@ -132,6 +132,34 @@ AUTOTESTER_BASE_URL="https://production.example.com" autotester
 ```
 
 Tests with absolute URLs (e.g. `url: "https://other-service.com/health"`) are never modified, regardless of the base URL setting.
+
+### Step Limits & Timeouts (Optional)
+
+By default, Autotester automatically calculates a sensible step limit and wall-clock timeout for each test based on its number of steps. This prevents the browser agent from running indefinitely if it gets stuck in a loop.
+
+The defaults are:
+
+- **`max_steps`**: `number_of_steps * 5` (minimum 20) -- the maximum number of agent steps (LLM calls) allowed per test
+- **`timeout`**: `number_of_steps * 60` (minimum 180) -- the maximum wall-clock time in seconds per test
+
+For example, a test with 6 steps gets a budget of 30 agent steps and a timeout of 360 seconds (6 minutes).
+
+You can override these globally or per test in your `autotester.yml`:
+
+```yaml
+e2e:
+  max_steps: 40       # global default for all tests
+  timeout: 300        # global timeout in seconds
+  login-test:
+    url: "localhost:3000"
+    max_steps: 25     # override for this test only
+    timeout: 180      # override for this test only
+    steps:
+      - Login with Github
+      - Check that the dashboard loads
+```
+
+When a test hits either limit, it is marked as failed with a descriptive message (e.g. `"Test timed out after 300s"`).
 
 ---
 
@@ -280,7 +308,7 @@ docker compose -f tests/docker-compose.yml run --rm test
 
 ### Roadmap
 
-- [x] Add support for base URLs and relative URLs: You can specify the base URL as environment variable; it is then combined with the specific test's URL if the specific's test URL is a relative URL. This allows users to use the same autotester.yml in different environments (e.g. test, prod) which share the same relative URLs but different base URLs
+- [x] Prevent infinite loops: Added `max_steps` and `timeout` safeguards (see [Step Limits & Timeouts](#step-limits--timeouts-optional))
 
 ## Credits
 

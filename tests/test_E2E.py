@@ -31,7 +31,7 @@ class FakeAgent:
         self.llm = llm
         self.browser = browser
         self.controller = controller
-    async def run(self):
+    async def run(self, **kwargs):
         return FakeHistory(getattr(self, "task", ""))
 
 @pytest.fixture(autouse=True)
@@ -135,7 +135,7 @@ class TestE2E:
         """Test that run_test propagates an exception when Agent.run raises an exception."""
         e2e = E2E(tests={})
         test_obj = End2endTest(name="TestException", steps=["trigger_exception"], url="http://example.com")
-        monkeypatch.setattr("autotester.E2E.Agent.run", lambda self: (_ for _ in ()).throw(Exception("Agent error")))
+        monkeypatch.setattr("autotester.E2E.Agent.run", lambda self, **kwargs: (_ for _ in ()).throw(Exception("Agent error")))
         with pytest.raises(Exception, match="Agent error"):
             await e2e.run_test(test_obj)
 
@@ -386,7 +386,7 @@ class TestE2E:
     async def test_run_slow_agent(self, monkeypatch):
         """Test that run_test handles a slow Agent.run execution correctly."""
         import asyncio
-        async def slow_run(self):
+        async def slow_run(self, **kwargs):
             await asyncio.sleep(0.1)
             return FakeHistory("normal step")
         monkeypatch.setattr(FakeAgent, "run", slow_run)
