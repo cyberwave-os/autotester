@@ -219,8 +219,11 @@ class E2E:
             )
         elif result := history.final_result():
             result_data = json.loads(result)
-            if "failure" not in result_data and "passed" in result_data:
-                result_data["failure"] = not bool(result_data["passed"])
+            if "failure" not in result_data:
+                if "fail" in result_data:
+                    result_data["failure"] = bool(result_data["fail"])
+                elif "passed" in result_data:
+                    result_data["failure"] = not bool(result_data["passed"])
             test_result: TestCase = TestCase.model_validate(result_data)
         else:
             test_result = TestCase(

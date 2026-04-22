@@ -203,6 +203,13 @@ def run_e2e_command(args):
         logger.error(f"Error reading YAML file: {e}")
         sys.exit(1)
 
+    failed_tests = [test for test in e2e_tests if not test.passed]
+    if failed_tests:
+        logger.error(
+            "%d/%d E2E test(s) failed", len(failed_tests), len(e2e_tests)
+        )
+        sys.exit(1)
+
     sys.exit(0)
 
 
