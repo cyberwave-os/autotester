@@ -26,11 +26,15 @@ class FakeHistory:
         else:
             return json.dumps({"passed": True, "comment": "Test succeeded"})
 class FakeAgent:
-    def __init__(self, task, llm, browser, controller):
+    def __init__(self, task, llm, browser, controller, **kwargs):
         self.task = task
         self.llm = llm
         self.browser = browser
         self.controller = controller
+        # Store any optional kwargs (e.g. extend_system_message, initial_actions)
+        # so tests can assert on them.
+        self.extend_system_message = kwargs.get("extend_system_message")
+        self.initial_actions = kwargs.get("initial_actions")
     async def run(self, **kwargs):
         return FakeHistory(getattr(self, "task", ""))
 
@@ -468,7 +472,7 @@ class TestE2EBaseUrl:
         """The agent task string uses the already-resolved URL from End2endTest."""
         captured_tasks = []
         original_init = FakeAgent.__init__
-        def new_init(self, task, llm, browser, controller):
+        def new_init(self, task, llm, browser, controller, **kwargs):
             captured_tasks.append(task)
             self.llm = llm
             self.browser = browser
@@ -478,6 +482,65 @@ class TestE2EBaseUrl:
         test_obj = End2endTest(name="ResolvedURL", steps=["click"], url="https://staging.example.com/dashboard")
         await e2e.run_test(test_obj)
         assert "https://staging.example.com/dashboard" in captured_tasks[0]
+        monkeypatch.setattr(FakeAgent, "__init__", original_init)
+
+    async def test_run_test_basic_auth_url_not_in_task_text(self, monkeypatch):
+        """Regression test for browser-use `_extract_start_url` email-stripping bug.
+
+        When HTTP Basic Auth credentials are embedded in the URL as
+        ``https://user:pass@host/path``, the substring ``pass@host`` matches
+        browser-use's "email" regex and gets deleted from the task text,
+        leaving ``https://user:/path`` which fails DNS resolution.
+
+        Autotester must therefore:
+          1. Keep the CLEAN (non-credentialed) URL in the task text the LLM reads.
+          2. Pass the credentialed URL via ``initial_actions`` so browser-use
+             navigates to it verbatim without running URL extraction.
+        """
+        captured = {}
+
+        def new_init(self, task, llm, browser, controller, **kwargs):
+            captured["task"] = task
+            captured["initial_actions"] = kwargs.get("initial_actions")
+            captured["extend_system_message"] = kwargs.get("extend_system_message")
+            self.llm = llm
+            self.browser = browser
+            self.controller = controller
+
+        original_init = FakeAgent.__init__
+        monkeypatch.setattr(FakeAgent, "__init__", new_init)
+
+        e2e = E2E(
+            tests={},
+            auth={"username": "dev", "password": "dev123"},
+            base_url="https://staging.example.com",
+        )
+        test_obj = End2endTest(
+            name="AuthTest",
+            steps=["click something"],
+            url="https://staging.example.com/login",
+        )
+        await e2e.run_test(test_obj)
+
+        # The CLEAN URL is what the LLM sees in the task.
+        assert "https://staging.example.com/login" in captured["task"]
+        # The credentialed URL must NOT appear in the task (would be mangled
+        # by browser-use's email-stripping regex).
+        assert "dev:dev123@" not in captured["task"]
+        assert "@staging.example.com" not in captured["task"]
+
+        # The credentialed URL is instead handed to browser-use as an
+        # explicit initial action, bypassing the URL extractor.
+        assert captured["initial_actions"] == [
+            {
+                "navigate": {
+                    "url": "https://dev:dev123@staging.example.com/login",
+                    "new_tab": False,
+                }
+            }
+        ]
+        assert captured["extend_system_message"] is not None
+
         monkeypatch.setattr(FakeAgent, "__init__", original_init)
 
 

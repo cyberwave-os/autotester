@@ -152,6 +152,20 @@ class E2E:
             DEFAULT_MIN_TIMEOUT,
         )
 
+        # The URL we show to the LLM in the task text MUST NOT contain
+        # embedded basic-auth credentials. browser-use's Agent runs
+        # `_extract_start_url` on the task string to pick an initial
+        # navigate action; that helper calls
+        #   re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', task)
+        # to strip email addresses before URL extraction. For a URL like
+        # `https://user:pass@host.example.com/login`, the `pass@host.example.com`
+        # substring matches that "email" pattern and gets deleted, leaving a
+        # broken `https://user:/login` that fails DNS resolution.
+        #
+        # Fix: pass the auth'd URL as an explicit `initial_actions` navigate
+        # (which browser-use uses verbatim and skips URL extraction for) and
+        # put only the CLEAN URL in the task text the LLM reads.
+        task_url = test.url
         nav_url = test.url
         if self.auth:
             nav_url = self._apply_basic_auth_to_url(
@@ -171,7 +185,7 @@ class E2E:
 
         agent_kwargs: dict = dict(
             task=f"""You are a QA tester. Follow these instructions to perform the test called {test.name}:
-* Go to {nav_url}
+* Go to {task_url}
 """
             + "\n".join(f"* {step}" for step in test.steps)
             + "\n\nIf any step that starts with 'Check' fails, the result is a failure",
@@ -183,10 +197,16 @@ class E2E:
         if self.auth:
             agent_kwargs["extend_system_message"] = (
                 "This site uses HTTP Basic Authentication. "
-                "Credentials are already embedded in the URL. "
+                "Credentials will be pre-applied when the page is first opened. "
                 "If you encounter a 401 or authentication prompt, "
-                "re-navigate to the URL which already contains the credentials."
+                "re-navigate to the same URL and the browser will reuse the cached credentials."
             )
+            # Hand the credentialed URL directly to browser-use as an initial
+            # action, bypassing its task-text URL extractor (which would strip
+            # out the `pass@host` portion of the URL as if it were an email).
+            agent_kwargs["initial_actions"] = [
+                {"navigate": {"url": nav_url, "new_tab": False}}
+            ]
 
         agent = Agent(**agent_kwargs)
 
