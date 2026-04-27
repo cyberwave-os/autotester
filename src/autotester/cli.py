@@ -186,6 +186,7 @@ def run_e2e_command(args):
             base_url = e2e_section.pop("base_url", None)
             max_steps = e2e_section.pop("max_steps", None)
             timeout = e2e_section.pop("timeout", None)
+            model = e2e_section.pop("model", None)
 
             e2e = E2E(
                 e2e_section,
@@ -195,6 +196,7 @@ def run_e2e_command(args):
                 base_url=base_url,
                 max_steps=max_steps,
                 timeout=timeout,
+                model=model,
             )
             e2e_tests = asyncio.run(e2e.run())
             report = Report(e2e_tests)

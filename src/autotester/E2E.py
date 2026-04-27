@@ -22,6 +22,7 @@ DEFAULT_MAX_STEPS_PER_TEST_STEP = 5
 DEFAULT_MIN_MAX_STEPS = 20
 DEFAULT_TIMEOUT_PER_TEST_STEP = 60  # seconds
 DEFAULT_MIN_TIMEOUT = 180  # seconds
+DEFAULT_MODEL = "gpt-5.4-mini"
 
 
 controller = Controller(output_model=TestCase)
@@ -41,6 +42,7 @@ class E2E:
         base_url: str | None = None,
         max_steps: int | None = None,
         timeout: int | None = None,
+        model: str | None = None,
     ):
         self.tests = tests
         self.chrome_instance_path = chrome_instance_path
@@ -51,6 +53,7 @@ class E2E:
         self.base_url = self._resolve_base_url(base_url)
         self.max_steps = max_steps
         self.timeout = timeout
+        self.model = self._resolve_model(model)
 
     @staticmethod
     def _resolve_auth(auth: dict | None) -> dict | None:
@@ -76,6 +79,20 @@ class E2E:
         """Resolve the base URL, with AUTOTESTER_BASE_URL env var taking precedence."""
         env_base = os.getenv("AUTOTESTER_BASE_URL")
         return env_base if env_base else base_url
+
+    @staticmethod
+    def _resolve_model(model: str | None) -> str:
+        """Resolve the LLM model.
+
+        Resolution order: AUTOTESTER_MODEL env var > explicit ``model`` argument
+        (typically sourced from autotester.yml) > package default.
+        """
+        env_model = os.getenv("AUTOTESTER_MODEL")
+        if env_model:
+            return env_model
+        if model:
+            return model
+        return DEFAULT_MODEL
 
     @staticmethod
     def _resolve_url(test_url: str, base_url: str | None) -> str:
@@ -189,7 +206,7 @@ class E2E:
 """
             + "\n".join(f"* {step}" for step in test.steps)
             + "\n\nIf any step that starts with 'Check' fails, the result is a failure",
-            llm=ChatOpenAI(model="gpt-4o"),
+            llm=ChatOpenAI(model=self.model),
             controller=controller,
             browser=browser,
         )

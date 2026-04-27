@@ -106,11 +106,11 @@ Add a `base_url` to your `autotester.yml`:
 e2e:
   base_url: "https://staging.example.com"
   login-test:
-    url: "/login"       # resolved to https://staging.example.com/login
+    url: "/login" # resolved to https://staging.example.com/login
     steps:
       - Check the login page loads
   dashboard-test:
-    url: "/dashboard"   # resolved to https://staging.example.com/dashboard
+    url: "/dashboard" # resolved to https://staging.example.com/dashboard
     steps:
       - Check the dashboard loads
 ```
@@ -148,18 +148,42 @@ You can override these globally or per test in your `autotester.yml`:
 
 ```yaml
 e2e:
-  max_steps: 40       # global default for all tests
-  timeout: 300        # global timeout in seconds
+  max_steps: 40 # global default for all tests
+  timeout: 300 # global timeout in seconds
   login-test:
     url: "localhost:3000"
-    max_steps: 25     # override for this test only
-    timeout: 180      # override for this test only
+    max_steps: 25 # override for this test only
+    timeout: 180 # override for this test only
     steps:
       - Login with Github
       - Check that the dashboard loads
 ```
 
 When a test hits either limit, it is marked as failed with a descriptive message (e.g. `"Test timed out after 300s"`).
+
+### Choosing the LLM Model (Optional)
+
+Autotester drives the browser agent with an OpenAI model. By default it uses
+`gpt-5.4-mini`. You can override it via `autotester.yml`:
+
+```yaml
+e2e:
+  model: "gpt-5.4-mini" # any OpenAI model your account can call (e.g. gpt-4o)
+  login-test:
+    url: "localhost:3000"
+    steps:
+      - Login with Github
+      - Check that the dashboard loads
+```
+
+Or via an environment variable, which takes precedence over the YAML value:
+
+```bash
+export AUTOTESTER_MODEL="gpt-5.4-mini"
+```
+
+The model name is forwarded verbatim to OpenAI via `browser-use`, so it must be
+a model id your OpenAI account is entitled to call.
 
 ---
 
@@ -287,6 +311,7 @@ autotester --config my-tests.yml
 - `AUTOTESTER_AUTH_USERNAME`: Username for HTTP Basic Auth (overrides `auth.username` in YAML)
 - `AUTOTESTER_AUTH_PASSWORD`: Password for HTTP Basic Auth (overrides `auth.password` in YAML)
 - `POSTHOG_PERSONAL_API_KEY`: Personal API key for Posthog session replay integration (optional, requires `session_recording:read` and `sharing_configuration:write` scopes)
+- `AUTOTESTER_MODEL`: LLM model to use for the browser agent (overrides `model` in YAML; defaults to `gpt-5.4-mini`)
 
 ## Run Tests with Docker
 
