@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import re
 from types import SimpleNamespace
 from urllib.parse import urlparse, urlunparse
 from browser_use import Agent, Browser, Controller
@@ -110,6 +111,12 @@ class E2E:
         return f"{base}{path}"
 
     @staticmethod
+    def _safe_name(name: str) -> str:
+        """Return a filesystem-safe version of a test name."""
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_")
+        return cleaned or "test"
+
+    @staticmethod
     def _apply_basic_auth_to_url(url: str, username: str, password: str) -> str:
         """Embed HTTP Basic Auth credentials into a URL for browser-level auth."""
         parsed = urlparse(url if "://" in url else f"http://{url}")
@@ -130,13 +137,14 @@ class E2E:
                 steps=test["steps"],
                 url=resolved_url,
             )
-            test_result, recording_url = await self.run_test(
+            test_result, recording_url, video_path = await self.run_test(
                 test, max_steps=test_max_steps, timeout=test_timeout
             )
             test.passed = not test_result.failure
             test.errored = test_result.errored
             test.comment = test_result.comment
             test.recording_url = recording_url
+            test.video_path = video_path
             all_tests.append(test)
         # write the results to e2e.json. this is temporary, we will eventually use the report class
         with open(Path.cwd() / ".autotester/e2e.json", "w") as f:
@@ -157,7 +165,7 @@ class E2E:
         test: End2endTest,
         max_steps: int | None = None,
         timeout: int | None = None,
-    ) -> tuple[TestCase, str | None]:
+    ) -> tuple[TestCase, str | None, str | None]:
         GitUtils.ensure_autotester_folder_exists_and_in_gitignore()  # avoid committing logs, screenshots and so on
 
         effective_max_steps = max_steps or max(
@@ -189,10 +197,17 @@ class E2E:
                 test.url, self.auth["username"], self.auth["password"]
             )
 
+        # Each test gets its own subdirectory under `.autotester/videos/` so
+        # we can deterministically locate the MP4 produced by browser-use
+        # (which writes `<uuid7>.mp4` into `record_video_dir`).
+        videos_root = Path.cwd() / ".autotester" / "videos"
+        per_test_video_dir = videos_root / self._safe_name(test.name)
+        per_test_video_dir.mkdir(parents=True, exist_ok=True)
+
         try:
             browser = Browser(
                 executable_path=self.chrome_instance_path,
-                record_video_dir=Path.cwd() / ".autotester/",
+                record_video_dir=per_test_video_dir,
                 traces_dir=Path.cwd() / ".autotester/",
             )
         except TypeError:
@@ -243,10 +258,16 @@ class E2E:
         if self.posthog_config:
             session_id = await extract_session_id(browser)
 
+        # NOTE: We must stop() the browser BEFORE looking for the recording
+        # file. browser-use writes the MP4 inside its BrowserStopEvent
+        # handler (see RecordingWatchdog.on_BrowserStopEvent), so the file
+        # only appears on disk after `stop()` completes.
         if hasattr(browser, "stop"):
             await browser.stop()
         elif hasattr(browser, "close"):
             await browser.close()
+
+        video_path = self._finalize_video(test, per_test_video_dir)
 
         if timed_out:
             test_result = TestCase(
@@ -273,4 +294,53 @@ class E2E:
         if self.posthog_config and session_id and test_result.failure:
             recording_url = await get_recording_url(self.posthog_config, session_id)
 
-        return test_result, recording_url
+        return test_result, recording_url, video_path
+
+    @staticmethod
+    def _finalize_video(test: End2endTest, video_dir: Path) -> str | None:
+        """Locate the MP4 produced by browser-use's recording watchdog and
+        rename it to a stable, predictable filename.
+
+        browser-use writes ``<uuid7>.mp4`` into ``record_video_dir``. We
+        rename the most recent MP4 in the per-test directory to
+        ``<test_name>.mp4`` so callers (and the GitHub Action artifact
+        upload) get a stable path. Returns the path relative to the
+        current working directory, or ``None`` when no MP4 was produced
+        (typically because the optional ``browser-use[video]`` extra is
+        not installed)."""
+        try:
+            if not video_dir.exists():
+                return None
+
+            mp4s = sorted(
+                video_dir.glob("*.mp4"),
+                key=lambda p: p.stat().st_mtime,
+            )
+            if not mp4s:
+                logger.debug(
+                    "No MP4 video produced for test '%s'. Install the optional "
+                    "video dependency (`pip install \"browser-use[video]\"`) "
+                    "to enable recording.",
+                    test.name,
+                )
+                return None
+
+            latest = mp4s[-1]
+            target = video_dir / f"{E2E._safe_name(test.name)}.mp4"
+            if latest != target:
+                # Remove any stale target from a previous run so rename is atomic.
+                if target.exists():
+                    target.unlink()
+                latest.rename(target)
+
+            try:
+                return str(target.relative_to(Path.cwd()))
+            except ValueError:
+                return str(target)
+        except Exception as e:
+            logger.warning(
+                "Failed to finalize video recording for test '%s': %s",
+                test.name,
+                e,
+            )
+            return None

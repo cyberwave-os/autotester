@@ -16,6 +16,11 @@ class End2endTest(BaseModel):
     comment: str = ""
     name: str
     recording_url: str | None = None
+    video_path: str | None = None
+    """Filesystem path (relative to the project root) to an MP4 recording of
+    the test run, when video recording is enabled. ``None`` if no video was
+    produced (e.g. the optional ``browser-use[video]`` extra is missing or
+    recording was disabled)."""
 
     def __init__(self, name: str, steps: list[str], url: str):
         super().__init__(name=name, steps=steps, url=url)

@@ -51,12 +51,16 @@ class Report:
                 xml_lines.append(f"        {test.comment}")
                 if test.recording_url:
                     xml_lines.append(f"        Recording: {test.recording_url}")
+                if test.video_path:
+                    xml_lines.append(f"        Video: {test.video_path}")
                 xml_lines.append("      </error>")
             elif not test.passed:
                 xml_lines.append('      <failure message="Test failed" type="Failure">')
                 xml_lines.append(f"        {test.comment}")
                 if test.recording_url:
                     xml_lines.append(f"        Recording: {test.recording_url}")
+                if test.video_path:
+                    xml_lines.append(f"        Video: {test.video_path}")
                 xml_lines.append("      </failure>")
 
             xml_lines.append("    </testcase>")

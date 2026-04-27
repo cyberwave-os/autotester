@@ -91,6 +91,7 @@ def test_end2end_test_dict_method():
         "errored": True,
         "comment": "Test complete",
         "recording_url": None,
+        "video_path": None,
     }
     assert result == expected
 
@@ -145,6 +146,7 @@ def test_end2end_test_json_method():
         "errored": True,
         "comment": "JSON test complete",
         "recording_url": None,
+        "video_path": None,
     }
     assert result == expected
 

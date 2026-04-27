@@ -52,17 +52,18 @@ class TestE2E:
         """Test run_test method for a successful test case."""
         e2e = E2E(tests={})
         test = End2endTest(name="TestSuccess", steps=["step1"], url="http://example.com")
-        result, recording_url = await e2e.run_test(test)
+        result, recording_url, video_path = await e2e.run_test(test)
         assert result.passed is True
         assert result.comment == "Test succeeded"
         assert result.errored is False
         assert recording_url is None
+        assert video_path is None
 
     async def test_run_test_failure(self):
         """Test run_test method for a test case simulating failure."""
         e2e = E2E(tests={})
         test = End2endTest(name="TestFailure", steps=["simulate_failure"], url="http://example.com")
-        result, recording_url = await e2e.run_test(test)
+        result, recording_url, _ = await e2e.run_test(test)
         assert result.passed is False
         assert result.comment == "Failed test simulated"
         assert result.errored is False
@@ -72,7 +73,7 @@ class TestE2E:
         """Test run_test method when no result is returned from agent.run."""
         e2e = E2E(tests={})
         test = End2endTest(name="TestNoResult", steps=["simulate_no_result"], url="http://example.com")
-        result, recording_url = await e2e.run_test(test)
+        result, recording_url, _ = await e2e.run_test(test)
         assert result.errored is True
         assert result.comment == "No result from the test"
         assert recording_url is None
@@ -81,7 +82,7 @@ class TestE2E:
         e2e = E2E(tests={})
         test = End2endTest(name="TestEmptyString", steps=["simulate_empty_string"], url="http://example.com")
         monkeypatch.setattr(FakeHistory, "final_result", lambda self: "")
-        result, _ = await e2e.run_test(test)
+        result, _, _ = await e2e.run_test(test)
         assert result.errored is True
         assert result.comment == "No result from the test"
 
@@ -147,7 +148,7 @@ class TestE2E:
         """Test run_test with an empty steps list to ensure default success behavior."""
         e2e = E2E(tests={})
         test_obj = End2endTest(name="TestEmptySteps", steps=[], url="http://example.com")
-        result, _ = await e2e.run_test(test_obj)
+        result, _, _ = await e2e.run_test(test_obj)
         assert result.passed is True
         assert result.comment == "Test succeeded"
         assert result.errored is False
@@ -217,7 +218,7 @@ class TestE2E:
         e2e = E2E(tests={})
         test_obj = End2endTest(name="TestExtraKeys", steps=["simulate_extra_keys"], url="http://example.com")
         monkeypatch.setattr(FakeHistory, "final_result", lambda self: json.dumps({"passed": False, "comment": "Handled extra keys", "extra": "ignored"}))
-        result, _ = await e2e.run_test(test_obj)
+        result, _, _ = await e2e.run_test(test_obj)
         assert result.passed is False
         assert result.comment == "Handled extra keys"
         assert result.errored is False
@@ -396,7 +397,7 @@ class TestE2E:
         monkeypatch.setattr(FakeAgent, "run", slow_run)
         e2e = E2E(tests={})
         test_obj = End2endTest(name="TestSlowAgent", steps=["normal step"], url="http://example.com")
-        result, _ = await e2e.run_test(test_obj)
+        result, _, _ = await e2e.run_test(test_obj)
         assert result.passed is True
         assert result.comment == "Test succeeded"
         assert result.errored is False
@@ -555,8 +556,85 @@ def test_end2endtest_model_dump_output():
     """Test that End2endTest.model_dump returns all expected keys."""
     test_obj = End2endTest(name="DumpTest", steps=["step1", "step2"], url="http://example.com")
     dump = test_obj.model_dump()
-    expected_keys = {"steps", "url", "passed", "errored", "comment", "name", "recording_url"}
+    expected_keys = {"steps", "url", "passed", "errored", "comment", "name", "recording_url", "video_path"}
     assert set(dump.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# Video recording tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestE2EVideoRecording:
+    """Tests for the local MP4 video recording integration with browser-use."""
+
+    async def test_no_video_when_browser_did_not_produce_one(self, tmp_path, monkeypatch):
+        """run_test returns video_path=None when browser-use does not write
+        an MP4 (e.g. the optional `browser-use[video]` extra is missing)."""
+        monkeypatch.chdir(tmp_path)
+        e2e = E2E(tests={})
+        test_obj = End2endTest(
+            name="NoVideo", steps=["step1"], url="http://example.com"
+        )
+        _, _, video_path = await e2e.run_test(test_obj)
+        assert video_path is None
+
+    async def test_video_path_attached_when_mp4_present(self, tmp_path, monkeypatch):
+        """When browser-use writes an MP4 into the per-test recording dir,
+        run_test surfaces the (renamed) path on the result."""
+        monkeypatch.chdir(tmp_path)
+
+        # Simulate browser-use's recording watchdog by writing a bogus MP4
+        # into the well-known per-test directory at browser-stop time. The
+        # directory is created by E2E.run_test BEFORE the browser starts,
+        # so we just need to know the same naming convention here.
+        from pathlib import Path
+
+        async def stop_writing_video(self):
+            self.closed = True
+            test_dir = Path.cwd() / ".autotester" / "videos" / "My_Test_With_weird_chars"
+            test_dir.mkdir(parents=True, exist_ok=True)
+            (test_dir / "01928f00-deadbeef.mp4").write_bytes(b"\x00\x00\x00")
+
+        monkeypatch.setattr(FakeBrowser, "stop", stop_writing_video, raising=False)
+
+        e2e = E2E(tests={})
+        test_obj = End2endTest(
+            name="My Test/With weird chars!",
+            steps=["step1"],
+            url="http://example.com",
+        )
+        _, _, video_path = await e2e.run_test(test_obj)
+
+        assert video_path is not None
+        assert video_path.endswith("My_Test_With_weird_chars.mp4")
+        assert (tmp_path / video_path).exists()
+
+    async def test_run_attaches_video_path_to_test(self, tmp_path, monkeypatch):
+        """The run() method copies video_path back onto each End2endTest
+        and persists it in the on-disk e2e.json output."""
+        monkeypatch.chdir(tmp_path)
+        from pathlib import Path
+
+        async def stop_writing_video(self):
+            self.closed = True
+            test_dir = Path.cwd() / ".autotester" / "videos" / "VideoTest"
+            test_dir.mkdir(parents=True, exist_ok=True)
+            (test_dir / "session.mp4").write_bytes(b"\x00\x00\x00")
+
+        monkeypatch.setattr(FakeBrowser, "stop", stop_writing_video, raising=False)
+
+        tests_dict = {"VideoTest": {"steps": ["step1"], "url": "http://example.com"}}
+        e2e = E2E(tests=tests_dict)
+        results = await e2e.run()
+        assert len(results) == 1
+        assert results[0].video_path is not None
+        assert results[0].video_path.endswith("VideoTest.mp4")
+
+        with open(tmp_path / "e2e.json", "r") as f:
+            data = json.load(f)
+        assert data[0]["video_path"] == results[0].video_path
 
 
 # ---------------------------------------------------------------------------
@@ -634,7 +712,7 @@ class TestE2EWithPosthog:
         )
         e2e = E2E(tests={}, posthog_config=None)
         test_obj = End2endTest(name="NoPH", steps=["step1"], url="http://example.com")
-        result, recording_url = await e2e.run_test(test_obj)
+        result, recording_url, _ = await e2e.run_test(test_obj)
         assert recording_url is None
 
     async def test_posthog_not_called_on_success(self, monkeypatch):
@@ -646,7 +724,7 @@ class TestE2EWithPosthog:
         config = PosthogConfig(project_id="1", personal_api_key="phx_k")
         e2e = E2E(tests={}, posthog_config=config)
         test_obj = End2endTest(name="PassTest", steps=["step1"], url="http://example.com")
-        result, recording_url = await e2e.run_test(test_obj)
+        result, recording_url, _ = await e2e.run_test(test_obj)
         assert result.passed is True
         assert recording_url is None
 
@@ -671,7 +749,7 @@ class TestE2EWithPosthog:
         test_obj = End2endTest(
             name="FailTest", steps=["simulate_failure"], url="http://example.com"
         )
-        result, recording_url = await e2e.run_test(test_obj)
+        result, recording_url, _ = await e2e.run_test(test_obj)
         assert result.passed is False
         assert recording_url == "https://us.posthog.com/shared/tok_fail"
 
@@ -686,7 +764,7 @@ class TestE2EWithPosthog:
         test_obj = End2endTest(
             name="NoSDK", steps=["simulate_failure"], url="http://example.com"
         )
-        result, recording_url = await e2e.run_test(test_obj)
+        result, recording_url, _ = await e2e.run_test(test_obj)
         assert result.passed is False
         assert recording_url is None
 
@@ -707,7 +785,7 @@ class TestE2EWithPosthog:
         test_obj = End2endTest(
             name="APIFail", steps=["simulate_failure"], url="http://example.com"
         )
-        result, recording_url = await e2e.run_test(test_obj)
+        result, recording_url, _ = await e2e.run_test(test_obj)
         assert result.passed is False
         assert recording_url is None
 

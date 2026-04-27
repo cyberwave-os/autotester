@@ -27,5 +27,7 @@ class Report:
         logger.info(f"  Comment: {test.comment}")
         if test.recording_url:
           logger.info(f"  Recording: {test.recording_url}")
+      if test.video_path:
+        logger.info(f"  Video: {test.video_path}")
       logger.info("\n")
 

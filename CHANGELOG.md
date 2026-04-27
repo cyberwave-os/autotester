@@ -1,3 +1,22 @@
+## [0.1.4] - 2026-04-27
+
+### Added
+
+- Local MP4 video recording for every E2E test run, powered by browser-use's
+  built-in CDP screencast recorder. Each test now writes
+  `.autotester/videos/<test-name>/<test-name>.mp4` and the path is exposed on
+  the `End2endTest` result (and serialized into `e2e.json` / `e2e.xml`).
+- The `browser-use[video]` extra is now a hard dependency, pulling in
+  `imageio[ffmpeg]` so the recorder works out of the box (no manual
+  install). Failed tests still get an optional Posthog session-replay link
+  on top of the local MP4.
+
+### Changed
+
+- `E2E.run_test` now returns a 3-tuple `(TestCase, recording_url,
+  video_path)` instead of `(TestCase, recording_url)`. Callers that
+  destructure the result must be updated.
+
 ## [0.1.2] - 2026-04-22
 
 ### Fixed
